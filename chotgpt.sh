@@ -12,7 +12,8 @@ else
 fi
 
 # コマンドライン引数から質問を取得します
-question="$1"
+# すべての引数を一つの文字列として結合します
+question="$*"
 
 # プロンプトの定型文を設定します
 messages_json="[{\"role\":\"system\",\"content\":\"You are a helpful assistant.\"},{\"role\":\"user\",\"content\":\"簡潔に1行で回答してください。質問の内容: $question\"}]"
