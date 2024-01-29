@@ -1,0 +1,124 @@
+#!/bin/bash
+
+CONFIG_FILE="$HOME/.chotgpt"
+HISTORY_FILE="$HOME/.chotgpt_history"
+GPT_MODEL="gpt-4-turbo-preview"
+
+# APIキーを~/.chotgptから読み込みます
+readAPIkey() {
+    if [[ -f $CONFIG_FILE ]]; then
+        API_KEY=$(cat $CONFIG_FILE)
+    else
+        echo "設定ファイルが存在しません。"
+        echo "$CONFIG_FILE にAPIキーを書いて保存してください。"
+        exit 1
+    fi
+}
+
+# 履歴を読み込みます
+loadHistory() {
+    if [[ -f $HISTORY_FILE ]]; then
+        history=$(cat $HISTORY_FILE)
+    else
+        history=""
+    fi
+}
+
+# 日付解析関数（OSに応じて分岐）
+parseDate() {
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS用
+        date -j -f "%Y-%m-%d %H:%M:%S" "$1" "+%s"
+    else
+        # Linux用
+        date -d "$1" "+%s"
+    fi
+}
+
+# 履歴をフィルタリングします
+filterHistory() {
+    filtered_history=""
+    current_time=$(date +%s)
+    while IFS= read -r line; do
+        timestamp=$(echo $line | cut -d'|' -f1)
+        question_time=$(parseDate "$timestamp")
+        if (( current_time - question_time < 3600 )); then
+            filtered_history+="$line\n"
+        fi
+    done <<< "$history"
+}
+
+# 履歴に新しい質問を追加します
+addQuestionToHistory() {
+    timestamp=$(date "+%Y-%m-%d %H:%M:%S")
+    unix_timestamp=$(date +%s)
+    # 改行を除去
+    question_cleaned=$(echo "$question" | tr -d '\n')
+    answer_cleaned=$(echo "$answer" | tr -d '\n')
+    new_entry="$timestamp|$unix_timestamp|$question_cleaned|$answer_cleaned"
+    echo -e "$filtered_history$new_entry" > $HISTORY_FILE
+}
+
+# コマンドライン引数から質問を取得します
+# すべての引数を一つの文字列として結合します
+question="$*"
+
+readAPIkey
+loadHistory
+filterHistory
+
+# プロンプトのsystem message
+messages_json="[{\"role\":\"system\",\"content\":\"コマンドラインから質問を投げています。簡潔に1行程度で回答してください。\"},{\"role\":\"user\",\"content\":\""
+
+# 質問履歴
+messages_json+="質問の履歴: $filtered_history "
+
+# 質問内容
+messages_json+="質問の内容: $question"
+
+# プロンプトの終わりカッコ
+messages_json+="\"}]"
+
+# debug
+#echo $messages_json
+
+# 質問をChatGPTに送信し、回答を取得します
+response=$(curl -s -X POST "https://api.openai.com/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $API_KEY" \
+  -d "{\"model\": \"$GPT_MODEL\", \"messages\": $messages_json, \"max_tokens\": 1000, \"n\": 1, \"stop\": null, \"temperature\": 0.5}")
+
+# エラーメッセージが存在する場合、それに基づいてエラーコードを設定します
+if [[ $(echo "$response" | jq '.error') != "null" ]]; then
+    status_code=$(echo "$response" | jq -r '.error.code')
+else
+    status_code="200"
+fi
+
+# エラーハンドリングを行います
+parseErrorResponse() {
+  case $1 in
+    "200") echo "SUCCESS" ;;
+    "InvalidAPIKey") echo "InvalidAPIKey" ;;
+    "ServerError") echo "ServerError" ;;
+    "RateLimitExceeded") echo "RateLimitExceeded" ;;
+    "model_not_found") echo "InvalidModel" ;;
+    "too_many_tokens") echo "TokenLimitExceeded" ;;
+    "BadRequest") echo "BadRequest" ;;
+    "Timeout") echo "Timeout" ;;
+    *) echo "UnknownError (Status Code: $1)" ;;
+  esac
+}
+
+error_string=$(parseErrorResponse $status_code)
+
+if [ "$error_string" == "SUCCESS" ]; then
+  # 回答を表示します
+  answer="$(echo "$response" | jq -r '.choices[0].message.content')"
+  echo $answer
+else
+  echo "ERROR: $error_string"
+  answer="ERROR"
+fi
+
+addQuestionToHistory
