@@ -16,7 +16,7 @@ A simple bash script to interact with OpenAI's ChatGPT using the OpenAI API.
 1. Clone this repository or download the `chotgpt.sh` script.
 2. Make the script executable:
    ```bash
-   chmod +x chotgpt.sh
+   chmod +x chotgpt
    ```
 3. Store your OpenAI API key in a file named `.chotgpt` in your home directory:
    ```bash
@@ -28,13 +28,13 @@ A simple bash script to interact with OpenAI's ChatGPT using the OpenAI API.
 To ask a question to ChatGPT, simply run the script followed by your question:
 
 ```bash
-./chotgpt.sh "Your question here"
+./chotgpt "Your question here"
 ```
 
 For example:
 
 ```bash
-./chotgpt.sh "What is the capital of Japan?"
+./chotgpt "ffmpeg command. Convert mov to mp4 with h264"
 ```
 
 The script will then display the answer from ChatGPT.
